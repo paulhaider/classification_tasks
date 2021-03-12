@@ -63,11 +63,11 @@ class ClassificationTask(Dataset):
             is_yin = criterion1 or criterion2 or criterion3
             is_circles = d_right < self.r_small or d_left < self.r_small
             if is_circles:
-                return np.array([0, 0, 1, 0])
+                return np.array([0, 0, 1])
             elif is_yin:
-                return np.array([0, 1, 0, 0])
+                return np.array([0, 1, 0])
             else:
-                return np.array([1, 0, 0, 0])
+                return np.array([1, 0, 0])
 
         elif self.task == 'xor':
             if abs(y) > 0.5 and abs(x) > 0.5 or abs(y) < 0.5 and abs(x) < 0.5:
