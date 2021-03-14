@@ -50,8 +50,9 @@ def plot_data():
 
 # Setup ANN
 class Net(torch.nn.Module):
-    def __init__(self, network_layout):
+    def __init__(self, network_layout, noise_width=0):
         super(Net, self).__init__()
+        self.noise_width = noise_width
         self.n_inputs = network_layout['n_inputs']
         self.n_layers = network_layout['n_layers']
         self.layer_sizes = network_layout['layer_sizes']
@@ -69,18 +70,12 @@ class Net(torch.nn.Module):
             x = self.layers[i](x)
             if not i == (self.n_layers-1):
                 relu = torch.nn.ReLU()
-                x = relu(x)
+                if self.noise_width != 0:
+                    x = torch.normal(mean=relu(x), std=self.noise_width)
+                else:
+                    x = relu(x)
                 x_hidden.append(x)
         return x
-
-torch.manual_seed(12345)
-# ANN with one hidden layer (with 120 neurons)
-network_layout = {
-    'n_inputs': 4,
-    'n_layers': 2,
-    'layer_sizes': [120, 3],
-}
-net = Net(network_layout)
 
 # Linear classifier for reference
 shallow_network_layout = {
@@ -106,43 +101,81 @@ def validation_step(net, criterion, loader):
         accuracy = float(num_correct) / num_shown
     return accuracy
 
-# set training parameters
-n_epochs = 500
-learning_rate = 0.1
-val_accuracies = []
-train_accuracies = []
-# setup loss and optimizer
-criterion = torch.nn.MSELoss()
-optimizer = torch.optim.SGD(net.parameters(), lr=learning_rate)
 
-# train for n_epochs
-for epoch in range(n_epochs):
-    val_acc = validation_step(net, criterion, val_loader)
-    if epoch % 25 == 0:
-        print('Validation accuracy after {0} epochs: {1}'.format(epoch, val_acc))
-    val_accuracies.append(val_acc)
-    num_correct = 0
-    num_shown = 0
-    for j, data in enumerate(train_loader):
-        inputs, labels = data
-        # need to convert to float32 because data is in float64
-        inputs = inputs.float()
-        labels = labels.float()
-        # zero the parameter gradients
-        optimizer.zero_grad()
-        # forward pass
-        outputs = net(inputs)
-        winner = outputs.argmax(1)
-        num_correct += len(outputs[outputs.argmax(1) == labels.argmax(1)])
-        num_shown += len(labels)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-    accuracy = float(num_correct) / num_shown
-    train_accuracies.append(accuracy)
+def train(noise_width=0):
 
-# after training evaluate on test set
-test_acc = validation_step(net, criterion, test_loader)
-print('#############################')
-print('Final test accuracy:', test_acc)
-print('#############################')
+    torch.manual_seed(12345)
+    # ANN with one hidden layer (with 120 neurons)
+    network_layout = {
+        'n_inputs': 4,
+        'n_layers': 2,
+        'layer_sizes': [150, 3],
+       }
+    net = Net(network_layout, noise_width)
+
+    # set training parameters
+    n_epochs = 500
+    learning_rate = 0.1
+    val_accuracies = []
+    train_accuracies = []
+    # setup loss and optimizer
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.SGD(net.parameters(), lr=learning_rate)
+
+    # train for n_epochs
+    for epoch in range(n_epochs):
+        val_acc = validation_step(net, criterion, val_loader)
+        if epoch % 25 == 0:
+            print('Validation accuracy after {0} epochs: {1}'.format(epoch, val_acc))
+        val_accuracies.append(val_acc)
+        num_correct = 0
+        num_shown = 0
+        for j, data in enumerate(train_loader):
+            inputs, labels = data
+            # need to convert to float32 because data is in float64
+            inputs = inputs.float()
+            labels = labels.float()
+            # zero the parameter gradients
+            optimizer.zero_grad()
+            # forward pass
+            outputs = net(inputs)
+            winner = outputs.argmax(1)
+            num_correct += len(outputs[outputs.argmax(1) == labels.argmax(1)])
+            num_shown += len(labels)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+        accuracy = float(num_correct) / num_shown
+        train_accuracies.append(accuracy)
+
+    # after training evaluate on test set
+    test_acc = validation_step(net, criterion, test_loader)
+    print('Final test accuracy:', test_acc)
+    return test_acc, train_accuracies
+
+if __name__ == "__main__":
+
+    widths = [0., 0.001, 0.003, 0.007, 0.01, 0.03, 0.07, 0.1, 0.3, 0.7]
+    test_accs = []
+    train_accs = []
+    for width in widths:
+        test_acc, train_acc = train(width)
+        test_accs.append(test_acc)
+        train_accs.append(train_acc)
+
+    test_accs = np.array(test_accs)
+    train_accs = np.array(train_accs)
+
+    fig, axes = plt.subplots(nrows=2, figsize=(8,8))
+    fig.suptitle('Yin-Yang training with noisy ANN')
+    for i, accs in enumerate(train_accs):
+        epoch_x = np.arange(len(accs))
+        axes[0].plot(epoch_x, accs, label=widths[i], linewidth=0.8)
+    axes[1].plot(widths, test_accs, 'x-', linewidth=0.8)
+    axes[0].set_xlabel('epochs')
+    axes[0].set_ylabel('train accuracy')
+    axes[0].legend(title=r'$\sigma_\mathrm{noise}$')
+    axes[1].set_xlabel(r'$\sigma_\mathrm{noise}$')
+    axes[1].set_ylabel('test accuracy')
+    plt.tight_layout()
+    plt.savefig('./noisy_yinyang.pdf')
