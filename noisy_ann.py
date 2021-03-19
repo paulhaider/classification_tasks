@@ -71,7 +71,8 @@ class Net(torch.nn.Module):
             if not i == (self.n_layers-1):
                 relu = torch.nn.ReLU()
                 if self.noise_width != 0:
-                    x = torch.normal(mean=relu(x), std=self.noise_width)
+                    x = relu(x)
+                    x += torch.normal(mean=torch.zeros_like(x), std=self.noise_width)
                 else:
                     x = relu(x)
                 x_hidden.append(x)
@@ -155,7 +156,7 @@ def train(noise_width=0):
 
 if __name__ == "__main__":
 
-    widths = [0., 0.001, 0.003, 0.007, 0.01, 0.03, 0.07, 0.1, 0.3, 0.7]
+    widths = [0., 0.01, 0.05, 0.1, 0.2, 0.4, 0.8]
     test_accs = []
     train_accs = []
     for width in widths:
@@ -175,7 +176,11 @@ if __name__ == "__main__":
     axes[0].set_xlabel('epochs')
     axes[0].set_ylabel('train accuracy')
     axes[0].legend(title=r'$\sigma_\mathrm{noise}$')
+    axes[0].grid(True)
     axes[1].set_xlabel(r'$\sigma_\mathrm{noise}$')
     axes[1].set_ylabel('test accuracy')
+    axes[1].grid(True)
     plt.tight_layout()
-    plt.savefig('./noisy_yinyang.pdf')
+    # plt.show()
+    for form in ['pdf', 'svg']:
+        plt.savefig('./noisy_yinyang.' + form)
